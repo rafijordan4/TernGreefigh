@@ -9,11 +9,15 @@ import javax.microedition.khronos.opengles.GL10;
 
 public class WorldRenderer implements GLSurfaceView.Renderer {
     private volatile float moveX,moveY,sensitivity=1.25f;
+    private final boolean previewMode;
+    private float playerYaw=0f;
     private volatile boolean jumpRequest,crouch;
     private volatile int emoteRequest;
-    private float px=0,pz=0,playerY=0,vy=0,yaw=0,pitch=12,anim=0,emoteTime=0;
+    private float px=0,pz=0,playerY=0,vy=0,yaw=180,pitch=12,anim=0,emoteTime=0;
     private boolean airborne=false,ragdoll=false;
     private int program,posHandle,colorHandle,mvpHandle;
+    public WorldRenderer(){this(false);}
+    public WorldRenderer(boolean preview){previewMode=preview;}
     private final float[] projection=new float[16],view=new float[16],model=new float[16],mvp=new float[16],temp=new float[16];
     private FloatBuffer cubeBuffer,gridBuffer;
     private static final String VS="uniform mat4 uMVP; attribute vec3 aPos; void main(){gl_Position=uMVP*vec4(aPos,1.0);}";
@@ -30,7 +34,7 @@ public class WorldRenderer implements GLSurfaceView.Renderer {
     private FloatBuffer buffer(float[] a){FloatBuffer b=ByteBuffer.allocateDirect(a.length*4).order(ByteOrder.nativeOrder()).asFloatBuffer();b.put(a).position(0);return b;}
     private int compile(int type,String src){int s=GLES20.glCreateShader(type);GLES20.glShaderSource(s,src);GLES20.glCompileShader(s);int[] ok={0};GLES20.glGetShaderiv(s,GLES20.GL_COMPILE_STATUS,ok,0);if(ok[0]==0)throw new RuntimeException("Shader compile failed: "+GLES20.glGetShaderInfoLog(s));return s;}
     @Override public void onSurfaceCreated(GL10 gl,EGLConfig cfg){
-        GLES20.glClearColor(0.91f,0.93f,0.94f,1);
+        GLES20.glClearColor(0.88f,0.89f,0.87f,1);
         program=GLES20.glCreateProgram();
         GLES20.glAttachShader(program,compile(GLES20.GL_VERTEX_SHADER,VS));
         GLES20.glAttachShader(program,compile(GLES20.GL_FRAGMENT_SHADER,FS));
@@ -58,7 +62,10 @@ public class WorldRenderer implements GLSurfaceView.Renderer {
         GLES20.glDrawArrays(mode,0,count);GLES20.glDisableVertexAttribArray(posHandle);
     }
     private void box(float x,float y,float z,float sx,float sy,float sz,float rx,float ry,float rz,float r,float g,float b){
-        Matrix.setIdentityM(model,0);Matrix.translateM(model,0,x,y,z);
+        Matrix.setIdentityM(model,0);
+        Matrix.translateM(model,0,px,0,pz);
+        Matrix.rotateM(model,0,playerYaw,0,1,0);
+        Matrix.translateM(model,0,x-px,y,z-pz);
         Matrix.rotateM(model,0,rz,0,0,1);Matrix.rotateM(model,0,ry,0,1,0);Matrix.rotateM(model,0,rx,1,0,0);
         Matrix.scaleM(model,0,sx,sy,sz);draw(cubeBuffer,36,GLES20.GL_TRIANGLES,r,g,b);
     }
@@ -66,7 +73,9 @@ public class WorldRenderer implements GLSurfaceView.Renderer {
         float rad=(float)Math.toRadians(yaw),forward=moveY,side=moveX;
         float vx=(float)(Math.sin(rad)*forward+Math.cos(rad)*side);
         float vz=(float)(-Math.cos(rad)*forward+Math.sin(rad)*side);
-        float len=(float)Math.sqrt(vx*vx+vz*vz);if(len>1){vx/=len;vz/=len;}
+        float len=(float)Math.sqrt(vx*vx+vz*vz);
+        if(len>1){vx/=len;vz/=len;}
+        if(len>0.08f) playerYaw=(float)Math.toDegrees(Math.atan2(vx,-vz));
         if(emoteRequest!=0){ragdoll=emoteRequest==3;emoteTime=0;emoteRequest=0;}
         if(emoteTime<2.0f)emoteTime+=dt;else if(!ragdoll)emoteTime=0;
         if(ragdoll&&(len>0.1f||jumpRequest)){ragdoll=false;emoteTime=0;}
@@ -76,7 +85,13 @@ public class WorldRenderer implements GLSurfaceView.Renderer {
         anim+=dt*(len>0.08f?9f:2f);
     }
     @Override public void onDrawFrame(GL10 gl){
-        update(0.016f);GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT|GLES20.GL_DEPTH_BUFFER_BIT);
+        if(previewMode){
+            yaw+=0.35f;
+            px=0;pz=0;playerY=0;
+        } else {
+            update(0.016f);
+        }
+        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT|GLES20.GL_DEPTH_BUFFER_BIT);
         float yr=(float)Math.toRadians(yaw),pr=(float)Math.toRadians(pitch);
         float tx=px,ty=1.05f+playerY,tz=pz,dist=5.5f,horiz=dist*(float)Math.cos(pr);
         float camX=tx-(float)Math.sin(yr)*horiz,camZ=tz+(float)Math.cos(yr)*horiz,camY=ty+dist*(float)Math.sin(pr);

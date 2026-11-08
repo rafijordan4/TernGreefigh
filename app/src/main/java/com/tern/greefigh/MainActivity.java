@@ -13,7 +13,7 @@ import android.opengl.GLSurfaceView;
 
 public class MainActivity extends Activity {
     private FrameLayout root, overlay;
-    private GLSurfaceView gl;
+    private GLSurfaceView gl, previewGl;
     private WorldRenderer renderer;
     private final Handler handler = new Handler();
     private Runnable loadingTask;
@@ -100,8 +100,11 @@ public class MainActivity extends Activity {
         row.setPadding(dp(24),dp(18),dp(24),dp(18)); row.setGravity(Gravity.CENTER);
         FrameLayout preview = new FrameLayout(this);
         preview.setBackground(bg(Color.rgb(225,226,222),22));
-        preview.addView(label("3D CHARACTER PREVIEW\n\nTERNGREEFigh",22,Color.DKGRAY),
-                new FrameLayout.LayoutParams(-1,-1));
+        previewGl = new GLSurfaceView(this);
+        previewGl.setEGLContextClientVersion(2);
+        previewGl.setRenderer(new WorldRenderer(true));
+        previewGl.setRenderMode(GLSurfaceView.RENDERMODE_CONTINUOUSLY);
+        preview.addView(previewGl,new FrameLayout.LayoutParams(-1,-1));
         row.addView(preview,new LinearLayout.LayoutParams(0,-1,1.3f));
         LinearLayout menu = new LinearLayout(this);
         menu.setOrientation(1); menu.setGravity(Gravity.CENTER);
@@ -208,7 +211,7 @@ public class MainActivity extends Activity {
             return true;
         }
     }
-    @Override protected void onPause(){if(gl!=null)gl.onPause();super.onPause();}
-    @Override protected void onResume(){super.onResume();if(gl!=null)gl.onResume();}
+    @Override protected void onPause(){if(gl!=null)gl.onPause();if(previewGl!=null)previewGl.onPause();super.onPause();}
+    @Override protected void onResume(){super.onResume();if(gl!=null)gl.onResume();if(previewGl!=null)previewGl.onResume();}
     @Override protected void onDestroy(){if(loadingTask!=null)handler.removeCallbacks(loadingTask);super.onDestroy();}
 }
