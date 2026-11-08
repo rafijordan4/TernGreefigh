@@ -163,7 +163,6 @@ public class MainActivity extends Activity {
         jp.setMargins(dp(22),0,0,dp(20)); overlay.addView(joy,jp);
         addControl("MENU",82,44,Gravity.TOP|Gravity.RIGHT,dp(12),0,()->showLoading(1));
         addControl("JUMP",82,54,Gravity.BOTTOM|Gravity.RIGHT,dp(24),dp(22),()->renderer.jump());
-        addControl("CROUCH",82,48,Gravity.BOTTOM|Gravity.RIGHT,dp(116),dp(22),()->renderer.toggleCrouch());
         addControl("HALO",70,44,Gravity.BOTTOM|Gravity.RIGHT,dp(24),dp(88),()->renderer.emote(1));
         addControl("MURUNG",78,44,Gravity.BOTTOM|Gravity.RIGHT,dp(100),dp(88),()->renderer.emote(2));
         addControl("RAGDOLL",84,44,Gravity.BOTTOM|Gravity.RIGHT,dp(190),dp(22),()->renderer.emote(3));

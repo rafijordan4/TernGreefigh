@@ -19,7 +19,9 @@ public class WorldRenderer implements GLSurfaceView.Renderer {
     public WorldRenderer(){this(false);}
     public WorldRenderer(boolean preview){previewMode=preview;}
     private final float[] projection=new float[16],view=new float[16],model=new float[16],mvp=new float[16],temp=new float[16];
-    private FloatBuffer cubeBuffer,gridBuffer;
+    private FloatBuffer cubeBuffer,gridBuffer,sphereBuffer;
+    private int sphereCount;
+    private float rollX=0f,rollZ=0f;
     private static final String VS="uniform mat4 uMVP; attribute vec3 aPos; void main(){gl_Position=uMVP*vec4(aPos,1.0);}";
     private static final String FS="precision mediump float; uniform vec4 uColor; void main(){gl_FragColor=uColor;}";
     private static final float[] CUBE={
@@ -32,6 +34,47 @@ public class WorldRenderer implements GLSurfaceView.Renderer {
     };
     private float[] makeGrid(){float[] a=new float[21*12];int k=0;for(int i=-10;i<=10;i++){a[k++]=i;a[k++]=0;a[k++]=-10;a[k++]=i;a[k++]=0;a[k++]=10;a[k++]=-10;a[k++]=0;a[k++]=i;a[k++]=10;a[k++]=0;a[k++]=i;}return java.util.Arrays.copyOf(a,k);}
     private FloatBuffer buffer(float[] a){FloatBuffer b=ByteBuffer.allocateDirect(a.length*4).order(ByteOrder.nativeOrder()).asFloatBuffer();b.put(a).position(0);return b;}
+    private float[] makeSphere(){
+        int stacks=16,slices=24;
+        float[] a=new float[stacks*slices*18];
+        int k=0;
+        for(int i=0;i<stacks;i++){
+            float v0=(float)(-Math.PI/2+i*Math.PI/stacks);
+            float v1=(float)(-Math.PI/2+(i+1)*Math.PI/stacks);
+            for(int j=0;j<slices;j++){
+                float u0=(float)(j*2*Math.PI/slices);
+                float u1=(float)((j+1)*2*Math.PI/slices);
+                float[] p00=sp(v0,u0),p01=sp(v0,u1);
+                float[] p10=sp(v1,u0),p11=sp(v1,u1);
+                k=put(a,k,p00); k=put(a,k,p10); k=put(a,k,p11);
+                k=put(a,k,p00); k=put(a,k,p11); k=put(a,k,p01);
+            }
+        }
+        return a;
+    }
+
+    private float[] sp(float v,float u){
+        float c=(float)Math.cos(v);
+        return new float[]{c*(float)Math.sin(u),(float)Math.sin(v),
+                c*(float)Math.cos(u)};
+    }
+
+    private int put(float[] a,int k,float[] p){
+        a[k++]=p[0];a[k++]=p[1];a[k++]=p[2];
+        return k;
+    }
+
+    private void ballPart(float x,float y,float z,
+            float sx,float sy,float sz,float r,float g,float b){
+        Matrix.setIdentityM(model,0);
+        Matrix.translateM(model,0,px,playerY+0.68f,pz);
+        Matrix.rotateM(model,0,rollX,1,0,0);
+        Matrix.rotateM(model,0,rollZ,0,0,1);
+        Matrix.translateM(model,0,x,y,z);
+        Matrix.scaleM(model,0,sx,sy,sz);
+        draw(sphereBuffer,sphereCount,GLES20.GL_TRIANGLES,r,g,b);
+    }
+
     private int compile(int type,String src){int s=GLES20.glCreateShader(type);GLES20.glShaderSource(s,src);GLES20.glCompileShader(s);int[] ok={0};GLES20.glGetShaderiv(s,GLES20.GL_COMPILE_STATUS,ok,0);if(ok[0]==0)throw new RuntimeException("Shader compile failed: "+GLES20.glGetShaderInfoLog(s));return s;}
     @Override public void onSurfaceCreated(GL10 gl,EGLConfig cfg){
         GLES20.glClearColor(0.88f,0.89f,0.87f,1);
@@ -44,7 +87,11 @@ public class WorldRenderer implements GLSurfaceView.Renderer {
         posHandle=GLES20.glGetAttribLocation(program,"aPos");
         colorHandle=GLES20.glGetUniformLocation(program,"uColor");
         mvpHandle=GLES20.glGetUniformLocation(program,"uMVP");
-        cubeBuffer=buffer(CUBE);gridBuffer=buffer(makeGrid());
+        cubeBuffer=buffer(CUBE);
+        gridBuffer=buffer(makeGrid());
+        float[] sphereData=makeSphere();
+        sphereBuffer=buffer(sphereData);
+        sphereCount=sphereData.length/3;
         GLES20.glEnable(GLES20.GL_DEPTH_TEST);GLES20.glDisable(GLES20.GL_CULL_FACE);
     }
     @Override public void onSurfaceChanged(GL10 gl,int w,int h){GLES20.glViewport(0,0,w,h);Matrix.perspectiveM(projection,0,55f,(float)w/Math.max(1,h),0.1f,100f);}
@@ -80,7 +127,15 @@ public class WorldRenderer implements GLSurfaceView.Renderer {
         if(emoteTime<2.0f)emoteTime+=dt;else if(!ragdoll)emoteTime=0;
         if(ragdoll&&(len>0.1f||jumpRequest)){ragdoll=false;emoteTime=0;}
         if(jumpRequest&&!airborne&&!ragdoll){vy=5.2f;airborne=true;}jumpRequest=false;
-        if(!ragdoll){float speed=crouch?1.25f:3.1f;px+=vx*speed*dt;pz+=vz*speed*dt;}
+        if(!ragdoll){
+            float speed=3.1f;
+            px+=vx*speed*dt;
+            pz+=vz*speed*dt;
+            if(len>0.01f){
+                rollX+=vz*speed*dt*85f;
+                rollZ-=vx*speed*dt*85f;
+            }
+        }
         if(airborne){vy-=9.8f*dt;playerY+=vy*dt;if(playerY<=0){playerY=0;vy=0;airborne=false;}}
         anim+=dt*(len>0.08f?9f:2f);
     }
@@ -100,16 +155,31 @@ public class WorldRenderer implements GLSurfaceView.Renderer {
         drawCharacter();
     }
     private void drawCharacter(){
-        float swing=(float)Math.sin(anim)*24f,y=playerY;
-        float tilt=ragdoll?(float)Math.sin(emoteTime*5)*42f:0;
-        float wave=(emoteTime>0.05f&&emoteTime<1.1f&&!ragdoll)?(float)Math.sin(emoteTime*10)*65f:0;
-        float torsoY=crouch?0.83f:1.12f,torsoH=crouch?0.75f:0.95f;
-        box(px,y+torsoY,pz,0.62f,torsoH,0.34f,tilt,0,0,0.94f,0.72f,0.25f);
-        box(px,y+(crouch?1.42f:1.88f),pz,0.48f,0.48f,0.43f,0,0,0,0.95f,0.78f,0.62f);
-        box(px,y+(crouch?1.42f:1.88f),pz-0.218f,0.25f,0.10f,0.025f,0,0,0,0.12f,0.12f,0.12f);
-        box(px-0.40f,y+torsoY+0.12f,pz,0.20f,0.72f,0.22f,swing+wave,0,0,0.90f,0.70f,0.22f);
-        box(px+0.40f,y+torsoY+0.12f,pz,0.20f,0.72f,0.22f,-swing-wave,0,0,0.90f,0.70f,0.22f);
-        box(px-0.18f,y+0.38f,pz,0.23f,crouch?0.55f:0.75f,0.25f,-swing,0,0,0.30f,0.48f,0.82f);
-        box(px+0.18f,y+0.38f,pz,0.23f,crouch?0.55f:0.75f,0.25f,swing,0,0,0.30f,0.48f,0.82f);
+        float pulse=airborne?(float)Math.sin(anim*2)*0.035f:0;
+
+        // Bola utama
+        ballPart(0,0,0,
+                0.66f,0.66f+pulse,0.66f,
+                0.98f,0.69f,0.12f);
+
+        // Panel warna dekoratif
+        ballPart(0,0.35f,-0.39f,0.24f,0.10f,0.055f,
+                0.12f,0.68f,0.95f);
+
+        // Mata
+        ballPart(-0.21f,0.13f,-0.55f,
+                0.105f,0.12f,0.065f,1f,1f,1f);
+        ballPart(0.21f,0.13f,-0.55f,
+                0.105f,0.12f,0.065f,1f,1f,1f);
+
+        // Pupil
+        ballPart(-0.21f,0.13f,-0.607f,
+                0.045f,0.06f,0.025f,0.08f,0.08f,0.10f);
+        ballPart(0.21f,0.13f,-0.607f,
+                0.045f,0.06f,0.025f,0.08f,0.08f,0.10f);
+
+        // Mulut
+        ballPart(0,-0.12f,-0.60f,
+                0.11f,0.035f,0.025f,0.18f,0.10f,0.08f);
     }
 }
